@@ -1,0 +1,4 @@
+import { LifecycleHooksAPI } from "./lifecycleHooks/index.js";
+/** Entrypoint for runtime API */
+export declare const lifecycleHooks: LifecycleHooksAPI;
+export type { OnInitHookFunction, AnyOnInitHookFunction, RegisteredHookFunction, TaskInitHookParams, TaskStartHookParams, OnStartHookFunction, AnyOnStartHookFunction, TaskFailureHookParams, AnyOnFailureHookFunction, TaskSuccessHookParams, AnyOnSuccessHookFunction, TaskCompleteHookParams, AnyOnCompleteHookFunction, TaskWaitHookParams, AnyOnWaitHookFunction, TaskResumeHookParams, AnyOnResumeHookFunction, TaskCatchErrorHookParams, AnyOnCatchErrorHookFunction, TaskCompleteResult, TaskMiddlewareHookParams, AnyOnMiddlewareHookFunction, OnMiddlewareHookFunction, OnCleanupHookFunction, AnyOnCleanupHookFunction, TaskCleanupHookParams, TaskWait, TaskCancelHookParams, OnCancelHookFunction, AnyOnCancelHookFunction, AnyOnStartAttemptHookFunction, } from "./lifecycleHooks/types.js";

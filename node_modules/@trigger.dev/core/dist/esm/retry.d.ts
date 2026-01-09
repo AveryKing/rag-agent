@@ -1,0 +1,1 @@
+export declare function calculateResetAt(resets: string | undefined | null, format: "unix_timestamp" | "iso_8601" | "iso_8601_duration_openai_variant" | "unix_timestamp_in_ms", now?: Date): Date | undefined;
