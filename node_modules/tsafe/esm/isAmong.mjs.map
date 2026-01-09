@@ -1,1 +1,0 @@
-{"version":3,"file":"isAmong.mjs","sourceRoot":"","sources":["../src/isAmong.ts"],"names":[],"mappings":"AAAA,qCAAqC;AACrC,MAAM,UAAU,OAAO,CACnB,KAAsB,EACtB,KAAc;IAEd,KAAK,MAAM,IAAI,IAAI,KAAK,EAAE,CAAC;QACvB,IAAI,IAAI,KAAK,KAAK,EAAE,CAAC;YACjB,OAAO,IAAI,CAAC;QAChB,CAAC;IACL,CAAC;IACD,OAAO,KAAK,CAAC;AACjB,CAAC"}

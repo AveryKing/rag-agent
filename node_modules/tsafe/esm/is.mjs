@@ -1,9 +1,0 @@
-import { is } from "./assert.mjs";
-/**
- * @deprecated: Prefer importing using `import { assert, is } from "tsafe/assert"`
- * or `import { assert, is } from "tsafe"`
- *
- * https://docs.tsafe.dev/is
- * */
-export { is };
-//# sourceMappingURL=is.mjs.map
