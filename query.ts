@@ -16,8 +16,7 @@ async function main() {
     // 1. Setup Supabase
     const supabase = createClient(SUPABASE_URL, SUPABASE_PRIVATE_KEY);
 
-    // Senior Engineer Fix: Custom Embedding class to bypass SDK bugs
-    // Senior Engineer Fix: Custom Embedding class with defensive string check
+    // Fix: Custom embedding implementation to handle potential input type mismatches
     const embeddings = {
         embedQuery: async (text: any) => {
             // Defensive: Extract string if LangChain passes an object
