@@ -4,11 +4,16 @@ import { ChatOllama } from "@langchain/ollama";
 import { createClient } from "@supabase/supabase-js";
 import { Document } from "@langchain/core/documents";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { z } from "zod";
+import { BaseMessage, HumanMessage, AIMessage } from "@langchain/core/messages";
 import { SUPABASE_URL, SUPABASE_PRIVATE_KEY, OLLAMA_BASE_URL, EMBEDDING_MODEL, LLM_MODEL } from "./config.ts";
 
 // 1. Definition of Graph State
 const GraphState = Annotation.Root({
+    // messages stores the chat history, compatible with UI templates
+    messages: Annotation<BaseMessage[]>({
+        reducer: (x, y) => x.concat(y),
+        default: () => [],
+    }),
     question: Annotation<string>({
         reducer: (x, y) => y ?? x,
     }),
@@ -68,10 +73,48 @@ const llm = new ChatOllama({
 
 // 3. Define Nodes
 
+// Helper to safely extract content from messages (handles strings or objects from UI)
+function extractContent(content: any): string {
+    if (typeof content === "string") return content;
+    if (content?.text) return content.text;
+    if (content?.input) return content.input;
+    if (Array.isArray(content)) {
+        return content.map((c: any) => typeof c === "string" ? c : (c.text || JSON.stringify(c))).join(" ");
+    }
+    return JSON.stringify(content);
+}
+
 async function retrieve(state: typeof GraphState.State) {
     console.log("--- RETRIEVING ---");
-    const documents = await vectorStore.similaritySearch(state.question, 3);
+    console.log("Current messages in state:", JSON.stringify(state.messages.map(m => ({
+        type: (m as any).type || (m as any)._type || (m as any).role || "unknown",
+        content: extractContent(m.content).substring(0, 50)
+    })), null, 2));
+
+    // Automatically set the question from the last user message if not set
+    let question = state.question;
+    if (!question && state.messages.length > 0) {
+        const lastMessage = state.messages[state.messages.length - 1];
+        // Check for instance or serialized type property safely
+        const isHuman = lastMessage instanceof HumanMessage ||
+            (lastMessage as any).type === "human" ||
+            (lastMessage as any)._type === "human" ||
+            (typeof lastMessage === "object" && (lastMessage as any).role === "user");
+
+        if (isHuman) {
+            question = extractContent(lastMessage.content);
+        }
+    }
+
+    if (!question) {
+        throw new Error("No question provided in state or messages.");
+    }
+
+    const documents = await vectorStore.similaritySearch(question, 3);
+    console.log(`Retrieved ${documents.length} raw documents from Supabase.`);
+
     return {
+        question,
         documents,
         steps: ["retrieve"],
         loopCount: state.loopCount + 1
@@ -95,6 +138,7 @@ async function gradeDocuments(state: typeof GraphState.State) {
 
     const relevantDocs: Document[] = [];
     for (const doc of state.documents) {
+        console.log(`Grading chunk: "${doc.pageContent.substring(0, 50)}..."`);
         const chain = graderPrompt.pipe(llm);
         const result = await chain.invoke({
             question: state.question,
@@ -102,42 +146,52 @@ async function gradeDocuments(state: typeof GraphState.State) {
         });
 
         const score = (result.content as string).toLowerCase().trim();
-        if (score.includes("yes")) {
+        const isRelevant = score.includes("yes");
+        console.log(`- Relevant? ${isRelevant ? "✅ YES" : "❌ NO"}`);
+
+        if (isRelevant) {
             relevantDocs.push(doc);
         }
     }
 
+    console.log(`Total relevant documents after grading: ${relevantDocs.length}`);
     return { documents: relevantDocs, steps: ["grade_documents"] };
 }
 
 async function generate(state: typeof GraphState.State) {
     console.log("--- GENERATING ---");
 
+    let finalAnswer = "";
     if (state.documents.length === 0) {
-        return {
-            generation: "I'm sorry, but I couldn't find any relevant information in the provided documents to answer that question.",
-            steps: ["generate"]
-        };
+        finalAnswer = "I'm sorry, but I couldn't find any relevant information in the provided documents to answer that question.";
+    } else {
+        const prompt = ChatPromptTemplate.fromTemplate(`
+        You are a helpful assistant answering questions about a PDF. 
+        Use the provided context to answer the question. 
+        If the context is sparse (like just a file name), acknowledge what the context is and then explain that no deeper details were found.
+        
+        Context: {context}
+        Question: {question}
+        
+        Answer:
+      `);
+
+        const context = state.documents.map((d) => d.pageContent).join("\n\n");
+        const chain = prompt.pipe(llm);
+        const result = await chain.invoke({
+            context,
+            question: state.question,
+        });
+        finalAnswer = result.content as string;
     }
 
-    const prompt = ChatPromptTemplate.fromTemplate(`
-    Answer the user's question based only on the provided context.
-    If you don't know the answer, say that you don't know.
-    
-    Context: {context}
-    Question: {question}
-  `);
+    console.log(`Generated Answer: "${finalAnswer.substring(0, 100)}..."`);
 
-    const context = state.documents.map((d) => d.pageContent).join("\n\n");
-    console.log(`Context used for generation (first 100 chars): "${context.substring(0, 100)}..."`);
-
-    const chain = prompt.pipe(llm);
-    const result = await chain.invoke({
-        context,
-        question: state.question,
-    });
-
-    return { generation: result.content as string, steps: ["generate"] };
+    return {
+        generation: finalAnswer,
+        messages: [new AIMessage(finalAnswer)],
+        steps: ["generate"]
+    };
 }
 
 async function transformQuery(state: typeof GraphState.State) {
@@ -189,14 +243,16 @@ const workflow = new StateGraph(GraphState)
     .addEdge("transform_query", "retrieve") // Loop back to search again
     .addEdge("generate", END);
 
-const app = workflow.compile();
+export const graph = workflow.compile();
 
-// 6. Run Execution
+// 6. Run Execution (Legacy CLI support)
 async function main() {
     const inputQuestion = process.argv[2] || "Who is Antigravity?";
     console.log(`\nQuestion: ${inputQuestion}`);
 
-    const result = await app.invoke({ question: inputQuestion });
+    const result = await graph.invoke({
+        messages: [new HumanMessage(inputQuestion)]
+    });
 
     console.log("\n--- Final Generation ---");
     console.log(result.generation);
@@ -207,5 +263,3 @@ async function main() {
 if (import.meta.url === `file://${process.argv[1]}`) {
     main().catch(console.error);
 }
-
-export { app };
